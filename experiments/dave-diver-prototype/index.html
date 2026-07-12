@@ -43,7 +43,6 @@
   .stat-bar { width: 120px; height: 10px; background: #222; border-radius: 5px; margin-top: 3px; overflow: hidden; }
   .stat-bar-fill { height: 100%; transition: width 0.3s; border-radius: 5px; }
   #airBar .stat-bar-fill { background: #4fc3f7; }
-  #depthBar .stat-bar-fill { background: #7c4dff; }
   #invPanel {
     position: absolute;
     bottom: 10px; left: 50%; transform: translateX(-50%);
@@ -114,7 +113,7 @@
       </div>
       <div class="stat" style="margin-top:4px;" id="scoreDisplay">Score: 0</div>
     </div>
-    <div class="stat" id="zoneLabel">📦 Testing Zone</div>
+    <div class="stat" id="zoneLabel">🌊 Testing Zone</div>
   </div>
 
   <div id="invPanel"></div>
@@ -135,123 +134,210 @@ const W = 800, H = 600;
 
 // ── WORLD ──
 const TILE = 16;
-const WORLD_W = 120; // tiles
+const WORLD_W = 120;
 const WORLD_H = 200;
 const PIXEL_W = WORLD_W * TILE;
 const PIXEL_H = WORLD_H * TILE;
 
-// ── PIXEL ART SPRITES (8x8 each, scaled) ──
-const SPR = {};
-
-function defineSprite(name, data) {
+// ── SPRITE SYSTEM ──
+// Sprites are drawn with fillRect at 16x16. Clean and reliable.
+function makeSprite(pixels, w, h) {
+  // pixels = flat array of hex strings: "rgb" or "rgba" or "transparent"
+  // w,h = width/height in pixels
   const c = document.createElement('canvas');
-  c.width = 8; c.height = 8;
+  c.width = w; c.height = h;
   const cx = c.getContext('2d');
-  const img = cx.createImageData(8, 8);
-  for (let y = 0; y < 8; y++) {
-    for (let x = 0; x < 8; x++) {
-      const i = (y * 8 + x);
-      const col = data[i] || 0;
-      const idx = i * 4;
-      img.data[idx] = (col >> 16) & 0xff;
-      img.data[idx+1] = (col >> 8) & 0xff;
-      img.data[idx+2] = col & 0xff;
-      img.data[idx+3] = (col >> 24) & 0xff;
+  
+  // Scale factor for drawing
+  const scaleX = TILE / w;
+  const scaleY = TILE / h;
+  
+  cx.imageSmoothingEnabled = false;
+  
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const color = pixels[y * w + x];
+      if (!color || color === 'transparent') continue;
+      cx.fillStyle = color;
+      cx.fillRect(x * scaleX, y * scaleY, scaleX, scaleY);
     }
   }
-  cx.putImageData(img, 0, 0);
-  SPR[name] = c;
+  return c;
 }
 
-// Colors: 0xRRGGBBAA
-const C = (r,g,b) => ((r&255)<<16)|((g&255)<<8)|(b&255)|(0xff<<24);
-
-// Diver (8x8) — simple wetsuit figure
-defineSprite('diver', [
-  0,0,0,C(60,60,60),C(60,60,60),0,0,0,
-  0,0,C(100,180,255),C(255,200,150),C(255,200,150),C(100,180,255),0,0,
-  0,C(100,180,255),C(40,60,120),C(40,60,120),C(40,60,120),C(40,60,120),C(100,180,255),0,
-  0,C(100,180,255),C(40,60,120),C(40,60,120),C(40,60,120),C(40,60,120),C(100,180,255),0,
-  0,0,C(60,60,60),C(200,130,60),C(200,130,60),C(60,60,60),0,0,
-  0,0,C(60,60,60),C(60,60,60),C(60,60,60),C(60,60,60),0,0,
-  0,0,0,C(60,60,60),C(60,60,60),0,0,0,
-  0,0,0,C(60,60,60),C(60,60,60),0,0,0,
-]);
-
-// Fish 1 — small orange fish
-defineSprite('fish1', [
-  0,0,0,0,C(255,120,50),0,0,0,
-  0,0,0,C(255,160,80),C(255,120,50),C(255,120,50),C(200,80,30),0,
-  0,C(255,200,150),C(255,160,80),C(255,160,80),C(255,120,50),C(255,120,50),C(200,80,30),0,
-  0,0,0,C(255,160,80),C(255,120,50),C(255,120,50),C(200,80,30),0,
-  0,0,0,0,C(255,120,50),0,0,0,
-  0,0,0,0,0,0,0,0,
-  0,0,0,0,0,0,0,0,
-  0,0,0,0,0,0,0,0,
-]);
-
-// Fish 2 — blue fish
-defineSprite('fish2', [
-  0,0,0,0,C(80,180,255),0,0,0,
-  0,0,0,C(120,210,255),C(80,180,255),C(80,180,255),C(40,120,200),0,
-  0,C(200,230,255),C(120,210,255),C(120,210,255),C(80,180,255),C(80,180,255),C(40,120,200),0,
-  0,0,0,C(120,210,255),C(80,180,255),C(80,180,255),C(40,120,200),0,
-  0,0,0,0,C(80,180,255),0,0,0,
-  0,0,0,0,0,0,0,0,
-  0,0,0,0,0,0,0,0,
-  0,0,0,0,0,0,0,0,
-]);
-
-// Seaweed
-defineSprite('seaweed', [
-  0,0,C(60,160,40),C(40,140,30),C(40,140,30),0,0,0,
-  0,0,C(60,180,50),C(40,160,40),C(40,160,40),0,0,0,
-  0,0,C(60,160,40),C(40,140,30),C(40,140,30),0,0,0,
-  0,0,C(60,180,50),C(40,160,40),C(40,160,40),0,0,0,
-  0,0,C(60,160,40),C(40,140,30),C(40,140,30),0,0,0,
-  0,0,C(60,180,50),C(40,160,40),C(40,160,40),0,0,0,
-  0,0,0,C(60,160,40),C(40,140,30),0,0,0,
-  0,0,0,0,C(60,160,40),0,0,0,
-]);
-
-// Treasure chest
-defineSprite('treasure', [
-  C(120,80,40),C(120,80,40),C(120,80,40),C(120,80,40),C(120,80,40),C(120,80,40),C(120,80,40),C(120,80,40),
-  C(120,80,40),C(200,160,80),C(200,160,80),C(200,160,80),C(200,160,80),C(200,160,80),C(200,160,80),C(120,80,40),
-  C(120,80,40),C(200,160,80),C(255,215,0),C(255,215,0),C(255,215,0),C(255,215,0),C(200,160,80),C(120,80,40),
-  C(120,80,40),C(200,160,80),C(200,160,80),C(200,160,80),C(200,160,80),C(200,160,80),C(200,160,80),C(120,80,40),
-  C(120,80,40),C(200,160,80),C(200,160,80),C(200,160,80),C(200,160,80),C(200,160,80),C(200,160,80),C(120,80,40),
-  C(120,80,40),C(120,80,40),C(120,80,40),C(120,80,40),C(120,80,40),C(120,80,40),C(120,80,40),C(120,80,40),
-  0,0,0,C(120,80,40),C(120,80,40),0,0,0,
-  0,0,0,C(120,80,40),C(120,80,40),0,0,0,
-]);
-
-// Shell
-defineSprite('shell', [
-  0,0,0,0,0,0,0,0,
-  0,0,0,C(200,180,150),C(200,180,150),0,0,0,
-  0,0,C(220,200,170),C(240,220,190),C(240,220,190),C(220,200,170),0,0,
-  0,C(200,180,150),C(220,200,170),C(240,220,190),C(240,220,190),C(220,200,170),C(200,180,150),0,
-  0,C(200,180,150),C(220,200,170),C(240,220,190),C(240,220,190),C(220,200,170),C(200,180,150),0,
-  0,0,C(200,180,150),C(200,180,150),C(200,180,150),C(200,180,150),0,0,
-  0,0,0,0,0,0,0,0,
-  0,0,0,0,0,0,0,0,
-]);
-
-// Bubbles decoration
-function drawBubble(ctx, x, y, r, alpha) {
-  ctx.beginPath();
-  ctx.arc(x, y, r, 0, Math.PI * 2);
-  ctx.fillStyle = `rgba(200,230,255,${alpha})`;
-  ctx.fill();
-  ctx.strokeStyle = `rgba(255,255,255,${alpha*0.5})`;
-  ctx.lineWidth = 0.5;
-  ctx.stroke();
+// Helper: draw a circle on a sprite
+function spriteCircle(cx, cx2, x, y, r, color) {
+  cx2.fillStyle = color;
+  cx2.beginPath();
+  cx2.arc(x, y, r, 0, Math.PI * 2);
+  cx2.fill();
 }
+
+// Build all sprites
+const SPR = {};
+
+// Diver (8x8)
+(function() {
+  const c = document.createElement('canvas');
+  c.width = TILE; c.height = TILE;
+  const cx = c.getContext('2d');
+  cx.imageSmoothingEnabled = false;
+  
+  // Wetsuit body
+  cx.fillStyle = '#2a4a7a';
+  cx.fillRect(3, 4, 10, 8);   // torso
+  
+  // Head
+  cx.fillStyle = '#ffcca8';
+  cx.fillRect(4, 0, 8, 5);    // face
+  
+  // Hair
+  cx.fillStyle = '#3a2a1a';
+  cx.fillRect(4, 0, 8, 2);    // top hair
+  
+  // Eyes
+  cx.fillStyle = '#222';
+  cx.fillRect(7, 2, 2, 2);
+  
+  // Flippers
+  cx.fillStyle = '#1a3a5a';
+  cx.fillRect(1, 12, 3, 2);
+  cx.fillRect(12, 12, 3, 2);
+  
+  // Air tank
+  cx.fillStyle = '#888';
+  cx.fillRect(12, 5, 3, 6);
+  
+  SPR.diver = c;
+})();
+
+// Clownfish (8x6 -> draws at 16x10)
+(function() {
+  const c = document.createElement('canvas');
+  c.width = TILE; c.height = TILE;
+  const cx = c.getContext('2d');
+  cx.imageSmoothingEnabled = false;
+  
+  cx.fillStyle = '#ff8833';
+  cx.fillRect(2, 4, 12, 5);   // body
+  
+  // White stripe
+  cx.fillStyle = '#fff';
+  cx.fillRect(6, 4, 3, 5);
+  cx.fillRect(10, 4, 2, 5);
+  
+  // Tail
+  cx.fillStyle = '#ff6633';
+  cx.fillRect(0, 5, 2, 3);
+  
+  // Eye
+  cx.fillStyle = '#222';
+  cx.fillRect(12, 5, 2, 2);
+  
+  SPR.fish1 = c;
+})();
+
+// Blue Tang (8x6 -> draws at 16x10)
+(function() {
+  const c = document.createElement('canvas');
+  c.width = TILE; c.height = TILE;
+  const cx = c.getContext('2d');
+  cx.imageSmoothingEnabled = false;
+  
+  cx.fillStyle = '#4488dd';
+  cx.fillRect(2, 4, 12, 5);
+  
+  // Dark patch
+  cx.fillStyle = '#223366';
+  cx.fillRect(4, 5, 4, 3);
+  
+  // Yellow tail
+  cx.fillStyle = '#ffdd44';
+  cx.fillRect(0, 5, 2, 3);
+  
+  // Eye
+  cx.fillStyle = '#222';
+  cx.fillRect(12, 5, 2, 2);
+  
+  SPR.fish2 = c;
+})();
+
+// Seaweed (8x8)
+(function() {
+  const c = document.createElement('canvas');
+  c.width = TILE; c.height = TILE;
+  const cx = c.getContext('2d');
+  cx.imageSmoothingEnabled = false;
+  
+  cx.fillStyle = '#2d8a2d';
+  // Stalk
+  cx.fillRect(7, 2, 3, 14);
+  
+  // Leaves
+  cx.fillRect(4, 4, 4, 3);
+  cx.fillRect(9, 7, 4, 3);
+  cx.fillRect(5, 10, 4, 3);
+  
+  // Lighter tips
+  cx.fillStyle = '#4ab84a';
+  cx.fillRect(5, 4, 2, 2);
+  cx.fillRect(10, 7, 2, 2);
+  cx.fillRect(6, 10, 2, 2);
+  
+  SPR.seaweed = c;
+})();
+
+// Treasure chest (8x8)
+(function() {
+  const c = document.createElement('canvas');
+  c.width = TILE; c.height = TILE;
+  const cx = c.getContext('2d');
+  cx.imageSmoothingEnabled = false;
+  
+  cx.fillStyle = '#8a6a3a';
+  cx.fillRect(2, 3, 12, 10);  // box
+  
+  // Lid
+  cx.fillStyle = '#a07a4a';
+  cx.fillRect(2, 1, 12, 3);
+  
+  // Gold
+  cx.fillStyle = '#ffd700';
+  cx.fillRect(5, 4, 6, 3);
+  cx.fillRect(6, 3, 4, 2);
+  
+  // Lock
+  cx.fillStyle = '#ccaa00';
+  cx.fillRect(7, 7, 2, 3);
+  
+  SPR.treasure = c;
+})();
+
+// Shell (6x6)
+(function() {
+  const c = document.createElement('canvas');
+  c.width = TILE; c.height = TILE;
+  const cx = c.getContext('2d');
+  cx.imageSmoothingEnabled = false;
+  
+  cx.fillStyle = '#d4c4a4';
+  // Fan shape
+  for (let y = 4; y < 12; y++) {
+    const w = Math.floor((y - 4) * 1.2);
+    cx.fillRect(8 - w, y, w * 2 + 1, 2);
+  }
+  
+  // Lines
+  cx.fillStyle = '#b8a888';
+  cx.fillRect(7, 5, 1, 7);
+  cx.fillRect(10, 5, 1, 7);
+  
+  SPR.shell = c;
+})();
 
 // ── GAME STATE ──
 const game = {
-  player: { x: WORLD_W/2 * TILE, y: 3 * TILE, w: 10, h: 14, speed: 120 },
+  player: { x: WORLD_W/2 * TILE, y: 3 * TILE, w: TILE, h: TILE, speed: 130 },
   camera: { x: 0, y: 0 },
   items: [],
   bubbles: [],
@@ -265,46 +351,51 @@ const game = {
   keys: {},
   elapsed: 0,
   worldTimer: 0,
+  tileMap: [],
 };
 
-const ITEMS = [
-  { type: 'fish1', name: 'Clownfish', points: 30, w: 8, h: 6, sprite: 'fish1' },
-  { type: 'fish2', name: 'Blue Tang', points: 40, w: 8, h: 6, sprite: 'fish2' },
-  { type: 'shell', name: 'Shell', points: 15, w: 8, h: 6, sprite: 'shell' },
-  { type: 'treasure', name: 'Treasure', points: 100, w: 8, h: 8, sprite: 'treasure' },
+const ITEM_TYPES = [
+  { type: 'fish1', name: 'Clownfish', points: 30, sprite: 'fish1', emoji: '🐠' },
+  { type: 'fish2', name: 'Blue Tang', points: 40, sprite: 'fish2', emoji: '🐟' },
+  { type: 'shell', name: 'Shell', points: 15, sprite: 'shell', emoji: '🐚' },
+  { type: 'treasure', name: 'Treasure', points: 100, sprite: 'treasure', emoji: '💎' },
 ];
 
 // ── WORLD GENERATION ──
 function generateWorld() {
-  // Background tiles: sandy bottom, open water
   const tileMap = [];
   for (let y = 0; y < WORLD_H; y++) {
     tileMap[y] = [];
     for (let x = 0; x < WORLD_W; x++) {
-      // Sandy bottom from ~row 170
       if (y > 165) tileMap[y][x] = 'sand';
-      else if (y > 180) tileMap[y][x] = 'deep_sand';
+      else if (y > 185) tileMap[y][x] = 'deep_sand';
       else tileMap[y][x] = 'water';
     }
   }
 
-  // Seaweed clusters near bottom
-  for (let i = 0; i < 60; i++) {
+  // Seaweed
+  for (let i = 0; i < 50; i++) {
     const x = 1 + Math.floor(Math.random() * (WORLD_W - 2));
-    const y = 160 + Math.floor(Math.random() * 30);
+    const y = 155 + Math.floor(Math.random() * 35);
     if (y < WORLD_H) {
-      // Place seaweed as a tile marker for rendering
       tileMap[y][x] = 'seaweed';
-      // Friends nearby
-      if (Math.random() < 0.5 && x + 1 < WORLD_W) tileMap[y][x+1] = 'seaweed';
-      if (Math.random() < 0.4 && y + 1 < WORLD_H) tileMap[y+1][x] = 'seaweed';
+      if (Math.random() < 0.4 && x + 1 < WORLD_W) tileMap[y][x+1] = 'seaweed';
     }
   }
 
-  // Place collectible items
+  // Rocks
+  for (let i = 0; i < 15; i++) {
+    const x = Math.floor(Math.random() * WORLD_W);
+    const y = 160 + Math.floor(Math.random() * 30);
+    if (y < WORLD_H) {
+      tileMap[y][x] = 'rock';
+      if (Math.random() < 0.5) tileMap[y][x+1] = 'rock';
+    }
+  }
+
   game.items = [];
-  for (let i = 0; i < 80; i++) {
-    const template = ITEMS[Math.floor(Math.random() * ITEMS.length)];
+  for (let i = 0; i < 100; i++) {
+    const template = ITEM_TYPES[Math.floor(Math.random() * ITEM_TYPES.length)];
     const x = 20 + Math.random() * (PIXEL_W - 40);
     const y = 60 + Math.random() * (PIXEL_H - 100);
     game.items.push({
@@ -355,24 +446,17 @@ function update(dt) {
   if (game.keys['a'] || game.keys['ArrowLeft']) dx = -1;
   if (game.keys['d'] || game.keys['ArrowRight']) dx = 1;
   
-  if (dx && dy) {
-    dx *= 0.707;
-    dy *= 0.707;
-  }
+  if (dx && dy) { dx *= 0.707; dy *= 0.707; }
 
-  // Move
   p.x += dx * p.speed * dt;
   p.y += dy * p.speed * dt;
-
-  // World bounds
   p.x = Math.max(4, Math.min(PIXEL_W - 4, p.x));
   p.y = Math.max(4, Math.min(PIXEL_H - 4, p.y));
 
-  // Depth calculation (0 at top, max at bottom)
   const depthMeters = Math.floor((p.y / PIXEL_H) * 80);
   game.depth = depthMeters;
 
-  // Air depletes faster deeper
+  // Air
   const depthFactor = 0.3 + (game.depth / 80) * 1.7;
   game.air -= dt * 3.0 * depthFactor;
   if (game.air <= 0) {
@@ -382,18 +466,16 @@ function update(dt) {
     document.getElementById('controls-hint').style.display = 'none';
   }
 
-  // Surface detection (top 2 tiles)
+  // Surface check
   if (p.y < TILE * 4) {
     game.surfaced = true;
-    // Score bonus for surfacing with loot
-    // In future: tally results screen
   }
 
   // Collect items
   for (const item of game.items) {
     if (item.collected) continue;
-    const ix = item.x, iy = item.y + Math.sin(game.worldTimer * 2 + item.bobPhase) * 2;
-    if (Math.abs(p.x - ix) < 12 && Math.abs(p.y - iy) < 12) {
+    const iy = item.y + Math.sin(game.worldTimer * 2 + item.bobPhase) * 2;
+    if (Math.abs(p.x - item.x) < 14 && Math.abs(p.y - iy) < 14) {
       item.collected = true;
       game.score += item.points;
       game.inventory[item.type] = (game.inventory[item.type] || 0) + 1;
@@ -401,17 +483,16 @@ function update(dt) {
     }
   }
 
-  // Ambient bubbles
-  if (Math.random() < 0.08) {
+  // Bubbles
+  if (Math.random() < 0.1) {
     game.bubbles.push({
       x: p.x + (Math.random() - 0.5) * 14,
-      y: p.y - 4,
+      y: p.y - 2,
       r: 1 + Math.random() * 2.5,
-      speed: 10 + Math.random() * 20,
+      speed: 15 + Math.random() * 25,
       alpha: 0.3 + Math.random() * 0.4,
     });
   }
-  // Game world bubbles
   if (Math.random() < 0.02) {
     game.bubbles.push({
       x: Math.random() * PIXEL_W,
@@ -421,7 +502,6 @@ function update(dt) {
       alpha: 0.1 + Math.random() * 0.2,
     });
   }
-  // Update bubbles
   for (let i = game.bubbles.length - 1; i >= 0; i--) {
     game.bubbles[i].y -= game.bubbles[i].speed * dt;
     game.bubbles[i].alpha -= dt * 0.3;
@@ -431,23 +511,17 @@ function update(dt) {
   }
   if (game.bubbles.length > 200) game.bubbles.splice(0, game.bubbles.length - 200);
 
-  // Camera follows player
+  // Camera
   game.camera.x = p.x - W/2;
   game.camera.y = p.y - H/2;
   game.camera.x = Math.max(0, Math.min(PIXEL_W - W, game.camera.x));
   game.camera.y = Math.max(0, Math.min(PIXEL_H - H, game.camera.y));
 
-  // Update UI
+  // UI
   document.getElementById('depthDisplay').textContent = `Depth: ${game.depth}m`;
   document.getElementById('scoreDisplay').textContent = `Score: ${game.score}`;
   const airPct = Math.max(0, game.air / game.maxAir * 100);
   document.getElementById('airBar').querySelector('.stat-bar-fill').style.width = airPct + '%';
-
-  // Surface check
-  if (game.surfaced) {
-    // Celebration / go again
-    // For now just let them keep diving
-  }
 }
 
 function updateInventoryUI() {
@@ -473,19 +547,19 @@ function render() {
   ctx.imageSmoothingEnabled = false;
   const cam = game.camera;
 
-  // Ocean background gradient
-  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  // Ocean background
   const depthNorm = Math.min(1, game.player.y / PIXEL_H);
   const topR = 10 + depthNorm * 5;
   const topG = 30 + depthNorm * 10;
   const topB = 80 + depthNorm * 20;
   const botR = 2, botG = 8, botB = 30;
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
   grad.addColorStop(0, `rgb(${topR},${topG},${topB})`);
   grad.addColorStop(1, `rgb(${botR},${botG},${botB})`);
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, W, H);
 
-  // Light rays from surface
+  // Light rays
   for (let i = 0; i < 3; i++) {
     const rx = (Math.sin(game.elapsed * 0.1 + i * 2) * 100) + W/2 - 150 + i * 100;
     ctx.fillStyle = `rgba(255,255,200,${0.02 + Math.sin(game.elapsed * 0.3 + i) * 0.01})`;
@@ -493,11 +567,10 @@ function render() {
     ctx.moveTo(rx, 0);
     ctx.lineTo(rx - 60, H);
     ctx.lineTo(rx + 60, H);
-    ctx.lineTo(rx, 0);
     ctx.fill();
   }
 
-  // Tile map (only visible tiles)
+  // Tiles
   const startTX = Math.max(0, Math.floor(cam.x / TILE));
   const startTY = Math.max(0, Math.floor(cam.y / TILE));
   const endTX = Math.min(WORLD_W, startTX + Math.ceil(W / TILE) + 2);
@@ -511,36 +584,36 @@ function render() {
       const sy = y * TILE - cam.y;
       
       if (tile === 'sand' || tile === 'deep_sand') {
-        if (tile === 'sand') ctx.fillStyle = '#8a7a5a';
-        else ctx.fillStyle = '#6a5a4a';
+        ctx.fillStyle = tile === 'sand' ? '#8a7a5a' : '#6a5a4a';
         ctx.fillRect(sx, sy, TILE, TILE);
-        // Sand texture dots
         ctx.fillStyle = tile === 'sand' ? '#9a8a6a' : '#7a6a5a';
         if ((x + y) % 3 === 0) ctx.fillRect(sx + 4, sy + 4, 2, 2);
         if ((x + y) % 5 === 0) ctx.fillRect(sx + 10, sy + 2, 2, 2);
       } else if (tile === 'seaweed') {
+        ctx.fillStyle = '#1a5a1a';
+        ctx.fillRect(sx + 7, sy, 3, TILE);
         ctx.drawImage(SPR.seaweed, sx, sy, TILE, TILE);
-        // Slight sway
-        ctx.save();
-        ctx.translate(sx + 8, sy + 8);
-        ctx.rotate(Math.sin(game.elapsed * 1.5 + x * 0.5 + y) * 0.05);
-        ctx.drawImage(SPR.seaweed, -8, -8, TILE, TILE);
-        ctx.restore();
+      } else if (tile === 'rock') {
+        ctx.fillStyle = '#5a5a5a';
+        ctx.fillRect(sx, sy, TILE, TILE);
+        ctx.fillStyle = '#6a6a6a';
+        ctx.fillRect(sx + 2, sy + 2, 6, 6);
+        ctx.fillRect(sx + 8, sy + 6, 6, 6);
       }
     }
   }
 
-  // Draw collectible items
+  // Items
   for (const item of game.items) {
     if (item.collected) continue;
     const sx = item.x - cam.x;
     const sy = item.y - cam.y + Math.sin(game.worldTimer * 2 + item.bobPhase) * 2;
     if (sx < -20 || sx > W + 20 || sy < -20 || sy > H + 20) continue;
-    ctx.drawImage(SPR[item.sprite], sx - 4, sy - 4, TILE, TILE);
-    // Glimmer for treasure
+    ctx.drawImage(SPR[item.sprite], sx - 8, sy - 8, TILE, TILE);
+    
     if (item.type === 'treasure') {
       ctx.fillStyle = `rgba(255,215,0,${0.1 + Math.sin(game.elapsed * 3) * 0.07})`;
-      ctx.fillRect(sx, sy, TILE, TILE);
+      ctx.fillRect(sx - 8, sy - 8, TILE, TILE);
     }
   }
 
@@ -549,25 +622,29 @@ function render() {
     const bx = b.x - cam.x;
     const by = b.y - cam.y;
     if (bx < -10 || bx > W + 10 || by < -10 || by > H + 10) continue;
-    drawBubble(ctx, bx, by, b.r, b.alpha);
+    ctx.beginPath();
+    ctx.arc(bx, by, b.r, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(200,230,255,${b.alpha})`;
+    ctx.fill();
+    ctx.strokeStyle = `rgba(255,255,255,${b.alpha * 0.5})`;
+    ctx.lineWidth = 0.5;
+    ctx.stroke();
   }
 
   // Player
-  const px = game.player.x - cam.x - 4;
-  const py = game.player.y - cam.y - 6;
+  const px = game.player.x - cam.x - 8;
+  const py = game.player.y - cam.y - 8;
   ctx.save();
-  // Bob while swimming
   const bobY = Math.sin(game.elapsed * 6) * 1;
   ctx.translate(px + 8, py + 8 + bobY);
-  // Slight lean based on movement
   let lean = 0;
   if (game.keys['a'] || game.keys['ArrowLeft']) lean = -0.15;
   if (game.keys['d'] || game.keys['ArrowRight']) lean = 0.15;
   ctx.rotate(lean);
-  ctx.drawImage(SPR.diver, -8, -8, TILE * 1.2, TILE * 1.2);
+  ctx.drawImage(SPR.diver, -8, -8, TILE, TILE);
   ctx.restore();
 
-  // Underwater vignette overlay
+  // Vignette
   const vigGrad = ctx.createRadialGradient(W/2, H/2, H*0.3, W/2, H/2, H*0.8);
   vigGrad.addColorStop(0, 'rgba(0,0,0,0)');
   vigGrad.addColorStop(1, `rgba(0,0,20,${0.2 + depthNorm * 0.3})`);
