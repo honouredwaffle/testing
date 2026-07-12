@@ -117,7 +117,7 @@
   </div>
 
   <div id="invPanel"></div>
-  <div id="controls-hint">Arrow Keys — Swim &nbsp;|&nbsp; Surface to exit</div>
+  <div id="controls-hint">WASD — Move &nbsp;|&nbsp; Surface to exit</div>
 
   <div id="gameOver">
     <div>💨 OUT OF AIR</div>
@@ -441,11 +441,11 @@ function update(dt) {
 
   const p = game.player;
   let dx = 0, dy = 0;
-  // Arrow keys = swimming
-  if (game.keys['ArrowUp']) dy = -1;
-  if (game.keys['ArrowDown']) dy = 1;
-  if (game.keys['ArrowLeft']) dx = -1;
-  if (game.keys['ArrowRight']) dx = 1;
+  // WASD movement (swim & land)
+  if (game.keys['w'] || game.keys['W']) dy = -1;
+  if (game.keys['s'] || game.keys['S']) dy = 1;
+  if (game.keys['a'] || game.keys['A']) dx = -1;
+  if (game.keys['d'] || game.keys['D']) dx = 1;
   
   if (dx && dy) { dx *= 0.707; dy *= 0.707; }
 
